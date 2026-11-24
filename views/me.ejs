@@ -1,0 +1,17 @@
+<%- include('partials/header') %>
+<h2>내 정보</h2>
+<% if (message) { %><p class="error"><%= message %></p><% } %>
+<% if (me.school_id) { %>
+<div class="card">
+  <h3>학년과 반</h3>
+  <p class="muted"><%= me.school_name %> · 시간표를 보려면 입력해 주세요.</p>
+  <form method="post" action="/me/class">
+    <label>학년<select name="grade">
+      <% [1, 2, 3].forEach(g => { %><option value="<%= g %>" <%= me.grade === g ? 'selected' : '' %>><%= g %>학년</option><% }) %>
+    </select></label>
+    <label>반<input name="class_nm" value="<%= me.class_nm || '' %>" maxlength="5" placeholder="예: 3" required></label>
+    <button>저장</button>
+  </form>
+</div>
+<% } %>
+<%- include('partials/footer') %>

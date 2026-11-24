@@ -65,6 +65,9 @@ async function init() {
       user_id INT NOT NULL REFERENCES users(id),
       PRIMARY KEY (comment_id, user_id)
     );
+    ALTER TABLE schools ADD COLUMN IF NOT EXISTS office_code TEXT;  -- 나이스 교육청 코드
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS grade INT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS class_nm TEXT;
   `);
 
   // 관리자 계정은 환경변수로 처음 한 번 만든다

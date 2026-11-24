@@ -20,7 +20,8 @@
   input, textarea, select { width:100%; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; margin:4px 0 12px; }
   button { padding:8px 14px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; cursor:pointer; }
   button.plain { background:none; color:var(--muted); padding:0; font-size:13px; }
-  form.inline { display:inline; }
+  form.inline { display:inline; margin-right:12px; }
+  header a { text-decoration:none; font-size:14px; }
   ul.list { list-style:none; padding:0; margin:0; }
   ul.list li { border-bottom:1px solid var(--line); padding:12px 0; }
   ul.list li a { text-decoration:none; }
@@ -33,6 +34,10 @@
 <header><div class="in">
   <b>학생 익명 게시판</b>
   <% if (me) { %>
+    <% if (me.status === 'approved') { %>
+      <% if (me.school_id) { %><a href="/today">급식·시간표</a><% } %>
+      <a href="/me">내 정보</a>
+    <% } %>
     <% if (me.is_admin) { %><a href="/admin">관리자</a><% } %>
     <form class="inline" method="post" action="/logout"><button class="plain">로그아웃</button></form>
   <% } %>

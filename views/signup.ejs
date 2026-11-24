@@ -11,7 +11,7 @@
     <select id="results" size="5" hidden></select>
     <p id="picked" class="muted">선택한 학교: 없음</p>
     <input type="hidden" name="neis_code"><input type="hidden" name="school_name">
-    <input type="hidden" name="school_kind"><input type="hidden" name="school_address">
+    <input type="hidden" name="school_kind"><input type="hidden" name="school_address"><input type="hidden" name="school_office">
 
     <label>학생증 사진 (jpg, png, webp · 5MB 이하)<input name="idcard" type="file" accept="image/jpeg,image/png,image/webp" required></label>
     <label class="muted" style="display:block; margin-bottom:12px"><input type="checkbox" name="agree" value="1" style="width:auto" required>
@@ -35,7 +35,7 @@
   });
   sel.addEventListener('change', () => {
     const s = list[sel.value];
-    f.neis_code.value = s.code; f.school_name.value = s.name; f.school_kind.value = s.kind; f.school_address.value = s.address || '';
+    f.neis_code.value = s.code; f.school_name.value = s.name; f.school_kind.value = s.kind; f.school_address.value = s.address || ''; f.school_office.value = s.office || '';
     document.getElementById('picked').textContent = '선택한 학교: ' + s.name;
   });
 </script>

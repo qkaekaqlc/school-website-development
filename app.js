@@ -36,7 +36,8 @@ app.use(async (req, res, next) => {
   res.locals.me = null;
   if (req.session.uid) {
     const [me] = await query(
-      `SELECT u.id, u.username, u.status, u.is_admin, u.school_id, s.name AS school_name
+      `SELECT u.id, u.username, u.status, u.is_admin, u.school_id, u.grade, u.class_nm,
+              s.name AS school_name, s.kind AS school_kind, s.neis_code, s.office_code
        FROM users u LEFT JOIN schools s ON s.id = u.school_id WHERE u.id = $1`, [req.session.uid]);
     if (me) res.locals.me = req.me = me;
     else req.session = null;
@@ -70,7 +71,7 @@ app.post('/signup', (req, res, next) => upload(req, res, async err => {
   const fail = msg => res.status(400).render('signup', { error: msg });
   try {
     if (err) return fail(err.code === 'LIMIT_FILE_SIZE' ? '사진은 5MB 이하만 올릴 수 있어요.' : '사진 업로드에 실패했어요.');
-    const { username = '', password = '', neis_code, school_name, school_kind, school_address, agree } = req.body;
+    const { username = '', password = '', neis_code, school_name, school_kind, school_address, school_office, agree } = req.body;
     if (!/^[a-zA-Z0-9_]{4,20}$/.test(username)) return fail('아이디는 영문, 숫자, _ 4~20자로 정해 주세요.');
     if (password.length < 8) return fail('비밀번호는 8자 이상이어야 해요.');
     if (!neis_code || !school_name || !SCHOOL_KINDS.includes(school_kind)) return fail('학교를 검색해서 선택해 주세요.');
@@ -81,9 +82,10 @@ app.post('/signup', (req, res, next) => upload(req, res, async err => {
     if (taken) return fail('이미 쓰는 아이디예요.');
 
     const [school] = await query(
-      `INSERT INTO schools (neis_code, name, kind, address) VALUES ($1, $2, $3, $4)
-       ON CONFLICT (neis_code) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
-      [neis_code, school_name, school_kind, school_address || null]);
+      `INSERT INTO schools (neis_code, name, kind, address, office_code) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (neis_code) DO UPDATE SET name = EXCLUDED.name,
+         office_code = COALESCE(EXCLUDED.office_code, schools.office_code) RETURNING id`,
+      [neis_code, school_name, school_kind, school_address || null, school_office || null]);
     const [user] = await query(
       `INSERT INTO users (username, password_hash, school_id, id_photo, id_photo_type)
        VALUES ($1, $2, $3, $4, $5) RETURNING id`,
@@ -111,20 +113,68 @@ app.get('/pending', (req, res) => {
   res.render('pending');
 });
 
+// 나이스 오픈API 호출. 결과가 없으면 빈 배열
+async function neis(service, params) {
+  const qs = new URLSearchParams({ Type: 'json', pSize: '100', ...params });
+  if (process.env.NEIS_KEY) qs.set('KEY', process.env.NEIS_KEY);
+  const r = await fetch(`https://open.neis.go.kr/hub/${service}?${qs}`);
+  return (await r.json())?.[service]?.[1]?.row || [];
+}
+
 // 나이스 학교 검색 (중·고등학교만)
 app.get('/schools/search', async (req, res) => {
   const q = String(req.query.q || '').trim();
   if (q.length < 2) return res.json([]);
-  const key = process.env.NEIS_KEY ? `KEY=${process.env.NEIS_KEY}&` : '';
   try {
-    const r = await fetch(`https://open.neis.go.kr/hub/schoolInfo?${key}Type=json&pSize=100&SCHUL_NM=${encodeURIComponent(q)}`);
-    const rows = (await r.json())?.schoolInfo?.[1]?.row || [];
+    const rows = await neis('schoolInfo', { SCHUL_NM: q });
     res.json(rows.filter(s => SCHOOL_KINDS.includes(s.SCHUL_KND_SC_NM)).map(s => ({
       code: s.SD_SCHUL_CODE, name: s.SCHUL_NM, kind: s.SCHUL_KND_SC_NM, address: s.ORG_RDNMA,
+      office: s.ATPT_OFCDC_SC_CODE,
     })));
   } catch {
     res.status(502).json({ error: '학교 검색에 실패했어요.' });
   }
+});
+
+// ── 내 정보 ──
+app.get('/me', requireApproved, (req, res) => res.render('me', { message: null }));
+
+app.post('/me/class', requireApproved, async (req, res) => {
+  const grade = Number(req.body.grade), classNm = String(req.body.class_nm || '').trim();
+  if (![1, 2, 3].includes(grade) || !/^[0-9A-Za-z가-힣]{1,5}$/.test(classNm))
+    return res.status(400).render('me', { message: '학년(1~3)과 반을 정확히 입력해 주세요.' });
+  await query('UPDATE users SET grade = $1, class_nm = $2 WHERE id = $3', [grade, classNm, req.me.id]);
+  res.redirect('/today');
+});
+
+// ── 오늘의 급식과 시간표 ──
+app.get('/today', requireApproved, async (req, res) => {
+  const me = req.me;
+  if (!me.school_id) return res.redirect('/board/all'); // 관리자는 학교가 없음
+  const ymd = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }).replaceAll('-', '');
+  const view = { date: `${ymd.slice(4, 6)}월 ${ymd.slice(6)}일`, meals: null, timetable: null, error: null };
+  if (!me.office_code) {
+    view.error = '학교 정보에 교육청 코드가 없어서 불러올 수 없어요. 관리자에게 알려 주세요.';
+    return res.render('today', view);
+  }
+  const school = { ATPT_OFCDC_SC_CODE: me.office_code, SD_SCHUL_CODE: me.neis_code };
+  try {
+    const meals = await neis('mealServiceDietInfo', { ...school, MLSV_YMD: ymd });
+    // "쌀밥 (5.6.)<br/>김치 (9.13.)" → ["쌀밥", "김치"] (알레르기 번호 제거)
+    view.meals = meals.map(m => ({
+      type: m.MMEAL_SC_NM,
+      dishes: m.DDISH_NM.split(/<br\s*\/?>/i).map(d => d.replace(/\s*\([\d.\s]*\)/g, '').trim()).filter(Boolean),
+    }));
+    if (me.grade && me.class_nm) {
+      const rows = await neis(me.school_kind === '고등학교' ? 'hisTimetable' : 'misTimetable',
+        { ...school, ALL_TI_YMD: ymd, GRADE: me.grade, CLASS_NM: me.class_nm });
+      view.timetable = rows.sort((a, b) => a.PERIO - b.PERIO).map(r => ({ period: r.PERIO, subject: r.ITRT_CNTNT }));
+    }
+  } catch (e) {
+    console.error(e);
+    view.error = '나이스에서 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.';
+  }
+  res.render('today', view);
 });
 
 // ── 게시판 ──
