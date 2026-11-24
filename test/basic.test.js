@@ -1,44 +1,9 @@
-// 실행: DATABASE_URL=... DATABASE_SSL=false npm test  (테스트 DB의 내용을 모두 지움)
-process.env.ADMIN_USERNAME = 'admin';
-process.env.ADMIN_PASSWORD = 'adminpass1';
-
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const request = require('supertest');
-const { pool, query, init } = require('../db');
-const app = require('../app');
+const { app, request, pool, query, PNG, reset, signup, login, userId } = require('./_helpers');
 
-const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
-const realFetch = global.fetch;
-
-before(async () => {
-  await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-  await init();
-  // 나이스 API 가짜 응답 (초등학교가 섞여 있음)
-  global.fetch = async () => ({
-    json: async () => ({ schoolInfo: [{}, { row: [
-      { SD_SCHUL_CODE: 'M1', SCHUL_NM: '가나중학교', SCHUL_KND_SC_NM: '중학교', ORG_RDNMA: '서울' },
-      { SD_SCHUL_CODE: 'H1', SCHUL_NM: '가나고등학교', SCHUL_KND_SC_NM: '고등학교', ORG_RDNMA: '서울' },
-      { SD_SCHUL_CODE: 'E1', SCHUL_NM: '가나초등학교', SCHUL_KND_SC_NM: '초등학교', ORG_RDNMA: '서울' },
-    ] }] }),
-  });
-});
-after(async () => { global.fetch = realFetch; await pool.end(); });
-
-async function signup(username, code, name, kind) {
-  const agent = request.agent(app);
-  const res = await agent.post('/signup')
-    .field({ username, password: 'password1', neis_code: code, school_name: name, school_kind: kind, agree: '1' })
-    .attach('idcard', PNG, { filename: 'id.png', contentType: 'image/png' });
-  assert.strictEqual(res.headers.location, '/pending', res.text);
-  return agent;
-}
-const login = async (username, password) => {
-  const agent = request.agent(app);
-  await agent.post('/login').type('form').send({ username, password }).expect(302);
-  return agent;
-};
-const userId = async name => (await query('SELECT id FROM users WHERE username = $1', [name]))[0].id;
+before(reset);
+after(() => pool.end());
 
 let admin, a, b, c, postId;
 
@@ -62,9 +27,9 @@ test('초등학교로는 가입할 수 없다', async () => {
 });
 
 test('승인 전에는 게시판에 들어갈 수 없다', async () => {
-  a = await signup('alice', 'M1', '가나중학교', '중학교');
-  b = await signup('bobby', 'H1', '가나고등학교', '고등학교');
-  c = await signup('carol', 'M1', '가나중학교', '중학교');
+  a = await signup('alice');
+  b = await signup('bobby', 'H1');
+  c = await signup('carol');
   await a.get('/board/school').expect(302).expect('Location', '/pending');
   await a.post('/board/all/new').type('form').send({ title: 't', body: 'b' }).expect(302).expect('Location', '/pending');
 });
@@ -84,7 +49,7 @@ test('관리자가 승인하면 학생증 사진이 지워지고 게시판을 �
 });
 
 test('거절해도 학생증 사진이 지워진다', async () => {
-  const d = await signup('dave', 'M1', '가나중학교', '중학교');
+  const d = await signup('dave');
   await admin.post(`/admin/users/${await userId('dave')}/reject`).expect(302);
   const [row] = await query(`SELECT status, id_photo FROM users WHERE username = 'dave'`);
   assert.deepStrictEqual(row, { status: 'rejected', id_photo: null });

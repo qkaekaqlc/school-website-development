@@ -55,6 +55,16 @@ async function init() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (target_type, target_id, reporter_id)
     );
+    CREATE TABLE IF NOT EXISTS post_likes (
+      post_id INT NOT NULL REFERENCES posts(id),
+      user_id INT NOT NULL REFERENCES users(id),
+      PRIMARY KEY (post_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS comment_likes (
+      comment_id INT NOT NULL REFERENCES comments(id),
+      user_id INT NOT NULL REFERENCES users(id),
+      PRIMARY KEY (comment_id, user_id)
+    );
   `);
 
   // 관리자 계정은 환경변수로 처음 한 번 만든다

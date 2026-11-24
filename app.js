@@ -52,6 +52,8 @@ const requireApproved = (req, res, next) => {
 const requireAdmin = (req, res, next) =>
   req.me?.is_admin ? next() : res.status(403).send('관리자만 볼 수 있어요.');
 
+const HOT_LIKES = 10; // 인기글 기준 좋아요 수
+
 const canSee = (me, post) => me.is_admin || post.school_id === null || post.school_id === me.school_id;
 
 const back = (req, fallback) => {
@@ -131,10 +133,23 @@ app.get('/board/:scope', requireApproved, async (req, res) => {
   if (school && !req.me.school_id) return res.redirect('/board/all'); // 관리자는 학교가 없음
   const posts = await query(
     `SELECT p.id, p.title, p.created_at,
-            (SELECT count(*) FROM comments c WHERE c.post_id = p.id AND NOT c.deleted)::int AS comment_count
+            (SELECT count(*) FROM comments c WHERE c.post_id = p.id AND NOT c.deleted)::int AS comment_count,
+            (SELECT count(*) FROM post_likes l WHERE l.post_id = p.id)::int AS like_count
      FROM posts p WHERE NOT p.deleted AND ${school ? 'p.school_id = $1' : 'p.school_id IS NULL'}
      ORDER BY p.id DESC LIMIT 100`, school ? [req.me.school_id] : []);
   res.render('board', { scope: req.params.scope, posts });
+});
+
+// 인기글: 내가 볼 수 있는 글 중 좋아요가 HOT_LIKES개 이상
+app.get('/hot', requireApproved, async (req, res) => {
+  const posts = await query(
+    `SELECT * FROM (
+       SELECT p.id, p.title, p.created_at,
+              (SELECT count(*) FROM comments c WHERE c.post_id = p.id AND NOT c.deleted)::int AS comment_count,
+              (SELECT count(*) FROM post_likes l WHERE l.post_id = p.id)::int AS like_count
+       FROM posts p WHERE NOT p.deleted AND ($1 OR p.school_id IS NULL OR p.school_id = $2)) t
+     WHERE like_count >= $3 ORDER BY id DESC LIMIT 100`, [req.me.is_admin, req.me.school_id, HOT_LIKES]);
+  res.render('board', { scope: 'hot', posts });
 });
 
 app.get('/board/:scope/new', requireApproved, (req, res) =>
@@ -162,17 +177,23 @@ async function findPost(req, res) {
 app.get('/post/:id', requireApproved, async (req, res) => {
   const post = await findPost(req, res);
   if (!post) return;
-  const rows = await query('SELECT * FROM comments WHERE post_id = $1 ORDER BY id', [post.id]);
+  const rows = await query(
+    `SELECT c.*, (SELECT count(*) FROM comment_likes l WHERE l.comment_id = c.id)::int AS like_count,
+            EXISTS (SELECT 1 FROM comment_likes l WHERE l.comment_id = c.id AND l.user_id = $2) AS liked
+     FROM comments c WHERE c.post_id = $1 ORDER BY c.id`, [post.id, req.me.id]);
+  const [likes] = await query(
+    `SELECT count(*)::int AS count, bool_or(user_id = $2) AS liked FROM post_likes WHERE post_id = $1`, [post.id, req.me.id]);
   // 댓글 작성자를 글쓴이 / 익명1, 익명2 ... 로 표시 (user_id는 화면에 넘기지 않음)
   const labels = new Map([[post.user_id, '글쓴이']]);
   const comments = rows.map(c => {
     if (!labels.has(c.user_id)) labels.set(c.user_id, `익명${labels.size}`);
     return { id: c.id, body: c.deleted ? null : c.body, created_at: c.created_at,
-             label: labels.get(c.user_id), mine: c.user_id === req.me.id };
+             label: labels.get(c.user_id), mine: c.user_id === req.me.id, likes: c.like_count, liked: c.liked };
   });
   res.render('post', {
     post: { id: post.id, title: post.title, body: post.body, created_at: post.created_at,
-            mine: post.user_id === req.me.id, scope: post.school_id ? 'school' : 'all' },
+            mine: post.user_id === req.me.id, scope: post.school_id ? 'school' : 'all',
+            likes: likes.count, liked: !!likes.liked },
     comments,
   });
 });
@@ -201,6 +222,30 @@ app.post('/comment/:id/delete', requireApproved, async (req, res) => {
   await query('UPDATE comments SET deleted = true WHERE id = $1', [c.id]);
   await query(`UPDATE reports SET resolved = true WHERE target_type = 'comment' AND target_id = $1`, [c.id]);
   res.redirect(back(req, `/post/${c.post_id}`));
+});
+
+// ── 좋아요 (다시 누르면 취소, 내 글에는 못 누름) ──
+async function toggleLike(table, column, targetId, userId) {
+  const removed = await query(`DELETE FROM ${table} WHERE ${column} = $1 AND user_id = $2 RETURNING 1`, [targetId, userId]);
+  if (!removed.length) await query(`INSERT INTO ${table} (${column}, user_id) VALUES ($1, $2)`, [targetId, userId]);
+}
+
+app.post('/post/:id/like', requireApproved, async (req, res) => {
+  const post = await findPost(req, res);
+  if (!post) return;
+  if (post.user_id === req.me.id) return res.status(400).send('내 글에는 좋아요를 누를 수 없어요.');
+  await toggleLike('post_likes', 'post_id', post.id, req.me.id);
+  res.redirect(`/post/${post.id}`);
+});
+
+app.post('/comment/:id/like', requireApproved, async (req, res) => {
+  const [c] = await query(
+    `SELECT c.id, c.user_id, c.post_id, p.school_id FROM comments c JOIN posts p ON p.id = c.post_id
+     WHERE c.id = $1 AND NOT c.deleted AND NOT p.deleted`, [Number(req.params.id) || 0]);
+  if (!c || !canSee(req.me, c)) return res.status(404).send('댓글을 찾을 수 없어요.');
+  if (c.user_id === req.me.id) return res.status(400).send('내 댓글에는 좋아요를 누를 수 없어요.');
+  await toggleLike('comment_likes', 'comment_id', c.id, req.me.id);
+  res.redirect(`/post/${c.post_id}`);
 });
 
 // ── 신고 ──

@@ -5,6 +5,9 @@
   <p class="muted">익명 · <%= post.created_at.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) %></p>
   <pre><%= post.body %></pre>
   <p>
+    <% if (post.mine) { %><span class="muted">좋아요 <%= post.likes %></span><% } else { %>
+      <form class="inline" method="post" action="/post/<%= post.id %>/like"><button class="plain"><%= post.liked ? '♥' : '♡' %> 좋아요 <%= post.likes %></button></form>
+    <% } %>
     <% if (post.mine || me.is_admin) { %>
       <form class="inline" method="post" action="/post/<%= post.id %>/delete" onsubmit="return confirm('삭제할까요?')"><button class="plain">삭제</button></form>
     <% } %>
@@ -21,6 +24,9 @@
         <b><%= c.label %></b> <span class="muted"><%= c.created_at.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) %></span>
         <% if (c.body === null) { %><p class="muted">삭제된 댓글이에요.</p><% } else { %>
           <pre><%= c.body %></pre>
+          <% if (c.mine) { %><span class="muted">좋아요 <%= c.likes %></span><% } else { %>
+            <form class="inline" method="post" action="/comment/<%= c.id %>/like"><button class="plain"><%= c.liked ? '♥' : '♡' %> <%= c.likes %></button></form>
+          <% } %>
           <% if (c.mine || me.is_admin) { %>
             <form class="inline" method="post" action="/comment/<%= c.id %>/delete"><button class="plain">삭제</button></form>
           <% } %>

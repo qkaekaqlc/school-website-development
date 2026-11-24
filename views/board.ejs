@@ -2,13 +2,14 @@
 <p class="tabs">
   <% if (me.school_id) { %><a href="/board/school" class="<%= scope === 'school' ? 'on' : '' %>"><%= me.school_name %></a><% } %>
   <a href="/board/all" class="<%= scope === 'all' ? 'on' : '' %>">전체 게시판</a>
+  <a href="/hot" class="<%= scope === 'hot' ? 'on' : '' %>">인기글</a>
 </p>
 <div class="card">
-  <a href="/board/<%= scope %>/new"><button>글쓰기</button></a>
+  <% if (scope !== 'hot') { %><a href="/board/<%= scope %>/new"><button>글쓰기</button></a><% } %>
   <ul class="list">
     <% posts.forEach(p => { %>
       <li><a href="/post/<%= p.id %>"><%= p.title %></a>
-        <div class="muted">익명 · <%= p.created_at.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) %> · 댓글 <%= p.comment_count %></div></li>
+        <div class="muted">익명 · <%= p.created_at.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) %> · 좋아요 <%= p.like_count %> · 댓글 <%= p.comment_count %></div></li>
     <% }) %>
     <% if (!posts.length) { %><li class="muted">아직 글이 없어요.</li><% } %>
   </ul>
