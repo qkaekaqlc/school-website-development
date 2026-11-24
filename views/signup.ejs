@@ -1,0 +1,42 @@
+<%- include('partials/header') %>
+<div class="card">
+  <h2>가입하기</h2>
+  <p class="muted">중·고등학생만 가입할 수 있어요. 관리자가 학생증을 확인한 뒤 승인해요.</p>
+  <% if (error) { %><p class="error"><%= error %></p><% } %>
+  <form method="post" action="/signup" enctype="multipart/form-data">
+    <label>아이디 (영문, 숫자, _ 4~20자)<input name="username" required></label>
+    <label>비밀번호 (8자 이상)<input name="password" type="password" minlength="8" required></label>
+
+    <label>학교 검색<input id="q" placeholder="학교 이름 2글자 이상" autocomplete="off"></label>
+    <select id="results" size="5" hidden></select>
+    <p id="picked" class="muted">선택한 학교: 없음</p>
+    <input type="hidden" name="neis_code"><input type="hidden" name="school_name">
+    <input type="hidden" name="school_kind"><input type="hidden" name="school_address">
+
+    <label>학생증 사진 (jpg, png, webp · 5MB 이하)<input name="idcard" type="file" accept="image/jpeg,image/png,image/webp" required></label>
+    <label class="muted" style="display:block; margin-bottom:12px"><input type="checkbox" name="agree" value="1" style="width:auto" required>
+      학생 확인을 위해 학생증 사진을 받는 데 동의해요. 사진은 승인이나 거절 직후 삭제돼요.</label>
+    <button>가입 신청</button>
+  </form>
+</div>
+<script>
+  const q = document.getElementById('q'), sel = document.getElementById('results'), f = document.forms[0];
+  let list = [], t;
+  q.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(async () => {
+      if (q.value.trim().length < 2) { sel.hidden = true; return; }
+      const r = await fetch('/schools/search?q=' + encodeURIComponent(q.value.trim()));
+      list = r.ok ? await r.json() : [];
+      sel.innerHTML = '';
+      list.forEach((s, i) => sel.add(new Option(`${s.name} (${s.address || s.kind})`, i)));
+      sel.hidden = list.length === 0;
+    }, 300);
+  });
+  sel.addEventListener('change', () => {
+    const s = list[sel.value];
+    f.neis_code.value = s.code; f.school_name.value = s.name; f.school_kind.value = s.kind; f.school_address.value = s.address || '';
+    document.getElementById('picked').textContent = '선택한 학교: ' + s.name;
+  });
+</script>
+<%- include('partials/footer') %>

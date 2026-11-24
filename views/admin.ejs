@@ -1,0 +1,23 @@
+<%- include('partials/header') %>
+<h2>가입 승인 대기 (<%= pending.length %>)</h2>
+<% pending.forEach(u => { %>
+  <div class="card">
+    <p><b><%= u.username %></b> · <%= u.school_name %> (<%= u.kind %>)<br><span class="muted"><%= u.address %></span></p>
+    <img src="/admin/photo/<%= u.id %>" alt="학생증" style="max-width:100%; border-radius:8px">
+    <p class="muted">학생증의 학교 이름이 위 학교와 같은지 확인하세요. 처리하면 사진은 삭제돼요.</p>
+    <form class="inline" method="post" action="/admin/users/<%= u.id %>/approve"><button>승인</button></form>
+    <form class="inline" method="post" action="/admin/users/<%= u.id %>/reject"><button class="plain">거절</button></form>
+  </div>
+<% }) %>
+
+<h2>신고 (<%= reports.length %>)</h2>
+<% reports.forEach(r => { %>
+  <div class="card">
+    <p class="muted"><%= r.target_type === 'post' ? '글' : '댓글' %> · 신고 <%= r.count %>건 · <%= r.reasons %></p>
+    <pre><%= r.content %></pre>
+    <p><a href="/post/<%= r.post_id %>">글 보기</a></p>
+    <form class="inline" method="post" action="/<%= r.target_type %>/<%= r.target_id %>/delete"><button>삭제</button></form>
+    <form class="inline" method="post" action="/admin/reports/<%= r.target_type %>/<%= r.target_id %>/dismiss"><button class="plain">문제없음</button></form>
+  </div>
+<% }) %>
+<%- include('partials/footer') %>

@@ -1,0 +1,12 @@
+<%- include('partials/header') %>
+<div class="card">
+  <h2>로그인</h2>
+  <% if (error) { %><p class="error"><%= error %></p><% } %>
+  <form method="post" action="/login">
+    <label>아이디<input name="username" required></label>
+    <label>비밀번호<input name="password" type="password" required></label>
+    <button>로그인</button>
+  </form>
+  <p class="muted">처음이라면 <a href="/signup">가입하기</a></p>
+</div>
+<%- include('partials/footer') %>

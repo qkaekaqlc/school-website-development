@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>학생 익명 게시판</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d1f23; --muted:#6b7280; --line:#e5e7eb; --accent:#e5483f; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111317; --card:#1b1e23; --text:#e8eaed; --muted:#9aa0a6; --line:#2c3036; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width: 680px; margin: 0 auto; padding: 16px; }
+  header { background:var(--card); border-bottom:1px solid var(--line); }
+  header .in { max-width:680px; margin:0 auto; padding:12px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  header b { color:var(--accent); margin-right:auto; }
+  a { color:inherit; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:12px; }
+  .muted { color:var(--muted); font-size:13px; }
+  .error { color:var(--accent); }
+  input, textarea, select { width:100%; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; margin:4px 0 12px; }
+  button { padding:8px 14px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; cursor:pointer; }
+  button.plain { background:none; color:var(--muted); padding:0; font-size:13px; }
+  form.inline { display:inline; }
+  ul.list { list-style:none; padding:0; margin:0; }
+  ul.list li { border-bottom:1px solid var(--line); padding:12px 0; }
+  ul.list li a { text-decoration:none; }
+  .tabs a { margin-right:12px; }
+  .tabs a.on { font-weight:700; color:var(--accent); }
+  pre { white-space:pre-wrap; word-break:break-word; font:inherit; margin:0; }
+</style>
+</head>
+<body>
+<header><div class="in">
+  <b>학생 익명 게시판</b>
+  <% if (me) { %>
+    <% if (me.is_admin) { %><a href="/admin">관리자</a><% } %>
+    <form class="inline" method="post" action="/logout"><button class="plain">로그아웃</button></form>
+  <% } %>
+</div></header>
+<main>
