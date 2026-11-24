@@ -2,12 +2,13 @@
 <p><a href="/board/<%= post.scope %>">← 목록</a></p>
 <div class="card">
   <h2><%= post.title %></h2>
-  <p class="muted">익명 · <%= post.created_at.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) %></p>
+  <p class="muted">익명 · <%= post.created_at.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) %><%= post.edited ? ' · 수정됨' : '' %></p>
   <pre><%= post.body %></pre>
-  <p>
-    <% if (post.mine) { %><span class="muted">좋아요 <%= post.likes %></span><% } else { %>
+  <div class="actions">
+    <% if (post.mine) { %><span class="muted" style="margin-right:12px">좋아요 <%= post.likes %></span><% } else { %>
       <form class="inline" method="post" action="/post/<%= post.id %>/like"><button class="plain"><%= post.liked ? '♥' : '♡' %> 좋아요 <%= post.likes %></button></form>
     <% } %>
+    <% if (post.mine) { %><a href="/post/<%= post.id %>/edit" class="muted" style="margin-right:12px">수정</a><% } %>
     <% if (post.mine || me.is_admin) { %>
       <form class="inline" method="post" action="/post/<%= post.id %>/delete" onsubmit="return confirm('삭제할까요?')"><button class="plain">삭제</button></form>
     <% } %>
@@ -15,7 +16,7 @@
       <form class="inline" method="post" action="/report/post/<%= post.id %>" onsubmit="this.reason.value = prompt('신고 사유') || ''; return !!this.reason.value">
         <input type="hidden" name="reason"><button class="plain">신고</button></form>
     <% } %>
-  </p>
+  </div>
 </div>
 <div class="card">
   <ul class="list">

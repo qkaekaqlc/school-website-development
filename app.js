@@ -247,13 +247,19 @@ app.get('/hot', requireApproved, async (req, res) => {
 app.get('/board/:scope/new', requireApproved, (req, res) =>
   res.render('new', { scope: req.params.scope, error: null }));
 
+// 글 제목·내용 검사. 문제가 있으면 안내 문구를 돌려준다
+async function checkPost(title, body) {
+  if (!title || !body || title.length > 100 || body.length > 5000)
+    return '제목(100자 이하)과 내용(5000자 이하)을 입력해 주세요.';
+  const banned = await findBannedWord(title, body);
+  if (banned) return `금지어("${banned}")가 들어 있어요.`;
+}
+
 app.post('/board/:scope/new', requireActive, async (req, res) => {
   const { scope } = req.params;
   const title = (req.body.title || '').trim(), body = (req.body.body || '').trim();
-  if (!title || !body || title.length > 100 || body.length > 5000)
-    return res.status(400).render('new', { scope, error: '제목(100자 이하)과 내용(5000자 이하)을 입력해 주세요.' });
-  const banned = await findBannedWord(title, body);
-  if (banned) return res.status(400).render('new', { scope, error: `금지어("${banned}")가 들어 있어요.` });
+  const error = await checkPost(title, body);
+  if (error) return res.status(400).render('new', { scope, error });
   const schoolId = scope === 'school' ? req.me.school_id : null;
   if (scope === 'school' && !schoolId) return res.status(400).send('학교 게시판에 쓸 수 없어요.');
   const [post] = await query(
@@ -287,9 +293,31 @@ app.get('/post/:id', requireApproved, async (req, res) => {
   res.render('post', {
     post: { id: post.id, title: post.title, body: post.body, created_at: post.created_at,
             mine: post.user_id === req.me.id, scope: post.school_id ? 'school' : 'all',
-            likes: likes.count, liked: !!likes.liked },
+            likes: likes.count, liked: !!likes.liked, edited: !!post.edited_at },
     comments,
   });
+});
+
+// 내 글 수정 (본인만)
+async function findMyPost(req, res) {
+  const post = await findPost(req, res);
+  if (post && post.user_id !== req.me.id) { res.status(403).send('내 글만 고칠 수 있어요.'); return null; }
+  return post;
+}
+
+app.get('/post/:id/edit', requireActive, async (req, res) => {
+  const post = await findMyPost(req, res);
+  if (post) res.render('new', { scope: post.school_id ? 'school' : 'all', error: null, post });
+});
+
+app.post('/post/:id/edit', requireActive, async (req, res) => {
+  const post = await findMyPost(req, res);
+  if (!post) return;
+  const title = (req.body.title || '').trim(), body = (req.body.body || '').trim();
+  const error = await checkPost(title, body);
+  if (error) return res.status(400).render('new', { scope: post.school_id ? 'school' : 'all', error, post: { ...post, title, body } });
+  await query('UPDATE posts SET title = $1, body = $2, edited_at = now() WHERE id = $3', [title, body, post.id]);
+  res.redirect(`/post/${post.id}`);
 });
 
 app.post('/post/:id/comment', requireActive, async (req, res) => {

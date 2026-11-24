@@ -1,11 +1,11 @@
 <%- include('partials/header') %>
 <div class="card">
-  <h2><%= scope === 'school' ? me.school_name : '전체 게시판' %> 글쓰기</h2>
+  <h2><%= scope === 'school' ? me.school_name : '전체 게시판' %> <%= locals.post ? '글 수정' : '글쓰기' %></h2>
   <% if (error) { %><p class="error"><%= error %></p><% } %>
   <form method="post">
-    <label>제목<input name="title" maxlength="100" required></label>
-    <label>내용<textarea name="body" rows="8" maxlength="5000" required></textarea></label>
-    <button>익명으로 올리기</button>
+    <label>제목<input name="title" maxlength="100" value="<%= locals.post?.title %>" required></label>
+    <label>내용<textarea name="body" rows="8" maxlength="5000" required><%= locals.post?.body %></textarea></label>
+    <button><%= locals.post ? '수정하기' : '익명으로 올리기' %></button>
   </form>
 </div>
 <%- include('partials/footer') %>
