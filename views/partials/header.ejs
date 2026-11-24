@@ -43,3 +43,4 @@
   <% } %>
 </div></header>
 <main>
+<% if (me && me.suspended) { %><p class="error">정지된 계정이에요. 글과 댓글을 쓸 수 없어요.</p><% } %>

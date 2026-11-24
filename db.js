@@ -68,6 +68,11 @@ async function init() {
     ALTER TABLE schools ADD COLUMN IF NOT EXISTS office_code TEXT;  -- 나이스 교육청 코드
     ALTER TABLE users ADD COLUMN IF NOT EXISTS grade INT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS class_nm TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended BOOLEAN NOT NULL DEFAULT false;
+    CREATE TABLE IF NOT EXISTS banned_words (
+      id SERIAL PRIMARY KEY,
+      word TEXT UNIQUE NOT NULL
+    );
   `);
 
   // 관리자 계정은 환경변수로 처음 한 번 만든다

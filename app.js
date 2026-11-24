@@ -2,6 +2,7 @@ const express = require('express');
 const cookieSession = require('cookie-session');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
 const { query } = require('./db');
 
 const app = express();
@@ -36,7 +37,7 @@ app.use(async (req, res, next) => {
   res.locals.me = null;
   if (req.session.uid) {
     const [me] = await query(
-      `SELECT u.id, u.username, u.status, u.is_admin, u.school_id, u.grade, u.class_nm,
+      `SELECT u.id, u.username, u.status, u.is_admin, u.suspended, u.school_id, u.grade, u.class_nm,
               s.name AS school_name, s.kind AS school_kind, s.neis_code, s.office_code
        FROM users u LEFT JOIN schools s ON s.id = u.school_id WHERE u.id = $1`, [req.session.uid]);
     if (me) res.locals.me = req.me = me;
@@ -50,12 +51,22 @@ const requireApproved = (req, res, next) => {
   if (req.me.status !== 'approved') return res.redirect('/pending');
   next();
 };
+// 글·댓글 쓰기: 승인됐고 정지되지 않은 사용자만
+const requireActive = [requireApproved, (req, res, next) =>
+  req.me.suspended ? res.status(403).send('정지된 계정이라 글과 댓글을 쓸 수 없어요.') : next()];
 const requireAdmin = (req, res, next) =>
   req.me?.is_admin ? next() : res.status(403).send('관리자만 볼 수 있어요.');
 
 const HOT_LIKES = 10; // 인기글 기준 좋아요 수
 
 const canSee = (me, post) => me.is_admin || post.school_id === null || post.school_id === me.school_id;
+
+// 글에 금지어가 있으면 그 단어를 돌려준다
+async function findBannedWord(...texts) {
+  const [row] = await query(
+    'SELECT word FROM banned_words WHERE position(lower(word) in lower($1)) > 0 LIMIT 1', [texts.join('\n')]);
+  return row?.word;
+}
 
 const back = (req, fallback) => {
   const ref = req.get('Referer');
@@ -97,7 +108,13 @@ app.post('/signup', (req, res, next) => upload(req, res, async err => {
 
 app.get('/login', (req, res) => res.render('login', { error: null }));
 
-app.post('/login', async (req, res) => {
+// 로그인 실패가 15분에 10번을 넘으면 잠시 막는다 (IP 기준)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: 10, skipSuccessfulRequests: true,
+  handler: (req, res) => res.status(429).render('login', { error: '로그인 시도가 너무 많아요. 15분 뒤에 다시 시도해 주세요.' }),
+});
+
+app.post('/login', loginLimiter, async (req, res) => {
   const [user] = await query('SELECT id, password_hash FROM users WHERE username = $1', [req.body.username || '']);
   if (!user || !(await bcrypt.compare(req.body.password || '', user.password_hash)))
     return res.status(400).render('login', { error: '아이디 또는 비밀번호가 맞지 않아요.' });
@@ -205,11 +222,13 @@ app.get('/hot', requireApproved, async (req, res) => {
 app.get('/board/:scope/new', requireApproved, (req, res) =>
   res.render('new', { scope: req.params.scope, error: null }));
 
-app.post('/board/:scope/new', requireApproved, async (req, res) => {
+app.post('/board/:scope/new', requireActive, async (req, res) => {
   const { scope } = req.params;
   const title = (req.body.title || '').trim(), body = (req.body.body || '').trim();
   if (!title || !body || title.length > 100 || body.length > 5000)
     return res.status(400).render('new', { scope, error: '제목(100자 이하)과 내용(5000자 이하)을 입력해 주세요.' });
+  const banned = await findBannedWord(title, body);
+  if (banned) return res.status(400).render('new', { scope, error: `금지어("${banned}")가 들어 있어요.` });
   const schoolId = scope === 'school' ? req.me.school_id : null;
   if (scope === 'school' && !schoolId) return res.status(400).send('학교 게시판에 쓸 수 없어요.');
   const [post] = await query(
@@ -248,10 +267,12 @@ app.get('/post/:id', requireApproved, async (req, res) => {
   });
 });
 
-app.post('/post/:id/comment', requireApproved, async (req, res) => {
+app.post('/post/:id/comment', requireActive, async (req, res) => {
   const post = await findPost(req, res);
   if (!post) return;
   const body = (req.body.body || '').trim();
+  const banned = await findBannedWord(body);
+  if (banned) return res.status(400).send(`금지어("${banned}")가 들어 있어서 댓글을 올릴 수 없어요.`);
   if (body && body.length <= 1000)
     await query('INSERT INTO comments (post_id, user_id, body) VALUES ($1, $2, $3)', [post.id, req.me.id, body]);
   res.redirect(`/post/${post.id}`);
@@ -324,7 +345,11 @@ app.get('/admin', requireAdmin, async (req, res) => {
      LEFT JOIN posts p ON r.target_type = 'post' AND p.id = r.target_id
      LEFT JOIN comments c ON r.target_type = 'comment' AND c.id = r.target_id
      WHERE NOT r.resolved GROUP BY r.target_type, r.target_id, p.id, c.id ORDER BY count DESC`);
-  res.render('admin', { pending, reports });
+  const suspended = await query(
+    `SELECT u.id, u.username, s.name AS school_name FROM users u LEFT JOIN schools s ON s.id = u.school_id
+     WHERE u.suspended ORDER BY u.id`);
+  const bannedWords = await query('SELECT id, word FROM banned_words ORDER BY word');
+  res.render('admin', { pending, reports, suspended, bannedWords });
 });
 
 app.get('/admin/photo/:id', requireAdmin, async (req, res) => {
@@ -343,6 +368,30 @@ app.post('/admin/users/:id/:action', requireAdmin, async (req, res) => {
 app.post('/admin/reports/:type/:id/dismiss', requireAdmin, async (req, res) => {
   await query('UPDATE reports SET resolved = true WHERE target_type = $1 AND target_id = $2',
     [req.params.type, Number(req.params.id) || 0]);
+  res.redirect('/admin');
+});
+
+// 신고된 글·댓글의 작성자 정지 (작성자가 누구인지는 화면에 보이지 않음)
+app.post('/admin/suspend/:type/:id', requireAdmin, async (req, res) => {
+  const table = req.params.type === 'post' ? 'posts' : 'comments';
+  await query(`UPDATE users SET suspended = true WHERE NOT is_admin AND id = (SELECT user_id FROM ${table} WHERE id = $1)`,
+    [Number(req.params.id) || 0]);
+  res.redirect('/admin');
+});
+
+app.post('/admin/unsuspend/:id', requireAdmin, async (req, res) => {
+  await query('UPDATE users SET suspended = false WHERE id = $1', [Number(req.params.id) || 0]);
+  res.redirect('/admin');
+});
+
+app.post('/admin/banned-words', requireAdmin, async (req, res) => {
+  const word = String(req.body.word || '').trim();
+  if (word && word.length <= 30) await query('INSERT INTO banned_words (word) VALUES ($1) ON CONFLICT DO NOTHING', [word]);
+  res.redirect('/admin');
+});
+
+app.post('/admin/banned-words/:id/delete', requireAdmin, async (req, res) => {
+  await query('DELETE FROM banned_words WHERE id = $1', [Number(req.params.id) || 0]);
   res.redirect('/admin');
 });
 

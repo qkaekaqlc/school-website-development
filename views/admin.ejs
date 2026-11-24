@@ -17,7 +17,32 @@
     <pre><%= r.content %></pre>
     <p><a href="/post/<%= r.post_id %>">글 보기</a></p>
     <form class="inline" method="post" action="/<%= r.target_type %>/<%= r.target_id %>/delete"><button>삭제</button></form>
+    <form class="inline" method="post" action="/admin/suspend/<%= r.target_type %>/<%= r.target_id %>" onsubmit="return confirm('작성자를 정지할까요?')"><button class="plain">작성자 정지</button></form>
     <form class="inline" method="post" action="/admin/reports/<%= r.target_type %>/<%= r.target_id %>/dismiss"><button class="plain">문제없음</button></form>
   </div>
 <% }) %>
+
+<h2>정지된 사용자 (<%= suspended.length %>)</h2>
+<div class="card">
+  <ul class="list">
+    <% suspended.forEach(u => { %>
+      <li><%= u.username %> <span class="muted"><%= u.school_name %></span>
+        <form class="inline" method="post" action="/admin/unsuspend/<%= u.id %>"><button class="plain">정지 해제</button></form></li>
+    <% }) %>
+    <% if (!suspended.length) { %><li class="muted">없어요.</li><% } %>
+  </ul>
+</div>
+
+<h2>금지어 (<%= bannedWords.length %>)</h2>
+<div class="card">
+  <form method="post" action="/admin/banned-words">
+    <input name="word" maxlength="30" placeholder="추가할 금지어" required>
+    <button>추가</button>
+  </form>
+  <p>
+    <% bannedWords.forEach(w => { %>
+      <form class="inline" method="post" action="/admin/banned-words/<%= w.id %>/delete"><button class="plain"><%= w.word %> ✕</button></form>
+    <% }) %>
+  </p>
+</div>
 <%- include('partials/footer') %>
