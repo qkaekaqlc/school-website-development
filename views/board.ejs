@@ -5,13 +5,19 @@
   <a href="/hot" class="<%= scope === 'hot' ? 'on' : '' %>">인기글</a>
 </p>
 <div class="card">
-  <% if (scope !== 'hot') { %><a href="/board/<%= scope %>/new"><button>글쓰기</button></a><% } %>
+  <% if (scope !== 'hot') { %>
+    <form method="get" action="/board/<%= scope %>">
+      <input name="q" value="<%= q %>" maxlength="50" placeholder="제목이나 내용으로 검색">
+    </form>
+    <% if (q) { %><p class="muted">"<%= q %>" 검색 결과 · <a href="/board/<%= scope %>">검색 지우기</a></p><% } %>
+    <a href="/board/<%= scope %>/new"><button>글쓰기</button></a>
+  <% } %>
   <ul class="list">
     <% posts.forEach(p => { %>
       <li><a href="/post/<%= p.id %>"><%= p.title %></a>
         <div class="muted">익명 · <%= p.created_at.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) %> · 좋아요 <%= p.like_count %> · 댓글 <%= p.comment_count %></div></li>
     <% }) %>
-    <% if (!posts.length) { %><li class="muted">아직 글이 없어요.</li><% } %>
+    <% if (!posts.length) { %><li class="muted"><%= q ? '검색 결과가 없어요.' : '아직 글이 없어요.' %></li><% } %>
   </ul>
 </div>
 <%- include('partials/footer') %>

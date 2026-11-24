@@ -14,4 +14,24 @@
   </form>
 </div>
 <% } %>
+<div class="card">
+  <h3>내가 쓴 글</h3>
+  <ul class="list">
+    <% posts.forEach(p => { %>
+      <li><a href="/post/<%= p.id %>"><%= p.title %></a>
+        <div class="muted"><%= p.school_id ? me.school_name : '전체 게시판' %> · <%= p.created_at.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) %></div></li>
+    <% }) %>
+    <% if (!posts.length) { %><li class="muted">아직 쓴 글이 없어요.</li><% } %>
+  </ul>
+</div>
+<div class="card">
+  <h3>내가 쓴 댓글</h3>
+  <ul class="list">
+    <% comments.forEach(c => { %>
+      <li><a href="/post/<%= c.post_id %>"><%= c.body %></a>
+        <div class="muted"><%= c.title %> · <%= c.created_at.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) %></div></li>
+    <% }) %>
+    <% if (!comments.length) { %><li class="muted">아직 쓴 댓글이 없어요.</li><% } %>
+  </ul>
+</div>
 <%- include('partials/footer') %>

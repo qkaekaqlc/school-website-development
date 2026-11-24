@@ -154,12 +154,22 @@ app.get('/schools/search', async (req, res) => {
 });
 
 // ── 내 정보 ──
-app.get('/me', requireApproved, (req, res) => res.render('me', { message: null }));
+async function renderMe(req, res, message, status = 200) {
+  const posts = await query(
+    `SELECT id, title, created_at, school_id FROM posts WHERE user_id = $1 AND NOT deleted ORDER BY id DESC LIMIT 50`,
+    [req.me.id]);
+  const comments = await query(
+    `SELECT c.body, c.created_at, c.post_id, p.title FROM comments c JOIN posts p ON p.id = c.post_id
+     WHERE c.user_id = $1 AND NOT c.deleted AND NOT p.deleted ORDER BY c.id DESC LIMIT 50`, [req.me.id]);
+  res.status(status).render('me', { message, posts, comments });
+}
+
+app.get('/me', requireApproved, (req, res) => renderMe(req, res, null));
 
 app.post('/me/class', requireApproved, async (req, res) => {
   const grade = Number(req.body.grade), classNm = String(req.body.class_nm || '').trim();
   if (![1, 2, 3].includes(grade) || !/^[0-9A-Za-z가-힣]{1,5}$/.test(classNm))
-    return res.status(400).render('me', { message: '학년(1~3)과 반을 정확히 입력해 주세요.' });
+    return renderMe(req, res, '학년(1~3)과 반을 정확히 입력해 주세요.', 400);
   await query('UPDATE users SET grade = $1, class_nm = $2 WHERE id = $3', [grade, classNm, req.me.id]);
   res.redirect('/today');
 });
@@ -198,13 +208,16 @@ app.get('/today', requireApproved, async (req, res) => {
 app.get('/board/:scope', requireApproved, async (req, res) => {
   const school = req.params.scope === 'school';
   if (school && !req.me.school_id) return res.redirect('/board/all'); // 관리자는 학교가 없음
+  const q = String(req.query.q || '').trim().slice(0, 50);
+  const params = [school ? req.me.school_id : null, `%${q.replace(/[\\%_]/g, '\\$&')}%`];
   const posts = await query(
     `SELECT p.id, p.title, p.created_at,
             (SELECT count(*) FROM comments c WHERE c.post_id = p.id AND NOT c.deleted)::int AS comment_count,
             (SELECT count(*) FROM post_likes l WHERE l.post_id = p.id)::int AS like_count
-     FROM posts p WHERE NOT p.deleted AND ${school ? 'p.school_id = $1' : 'p.school_id IS NULL'}
-     ORDER BY p.id DESC LIMIT 100`, school ? [req.me.school_id] : []);
-  res.render('board', { scope: req.params.scope, posts });
+     FROM posts p WHERE NOT p.deleted AND p.school_id IS NOT DISTINCT FROM $1
+       AND (p.title ILIKE $2 OR p.body ILIKE $2)
+     ORDER BY p.id DESC LIMIT 100`, params);
+  res.render('board', { scope: req.params.scope, posts, q });
 });
 
 // 인기글: 내가 볼 수 있는 글 중 좋아요가 HOT_LIKES개 이상
@@ -216,7 +229,7 @@ app.get('/hot', requireApproved, async (req, res) => {
               (SELECT count(*) FROM post_likes l WHERE l.post_id = p.id)::int AS like_count
        FROM posts p WHERE NOT p.deleted AND ($1 OR p.school_id IS NULL OR p.school_id = $2)) t
      WHERE like_count >= $3 ORDER BY id DESC LIMIT 100`, [req.me.is_admin, req.me.school_id, HOT_LIKES]);
-  res.render('board', { scope: 'hot', posts });
+  res.render('board', { scope: 'hot', posts, q: '' });
 });
 
 app.get('/board/:scope/new', requireApproved, (req, res) =>
