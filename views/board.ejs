@@ -19,5 +19,12 @@
     <% }) %>
     <% if (!posts.length) { %><li class="muted"><%= q ? '검색 결과가 없어요.' : '아직 글이 없어요.' %></li><% } %>
   </ul>
+  <% const base = scope === 'hot' ? '/hot' : `/board/${scope}`;
+     const link = n => `${base}?${new URLSearchParams(q ? { q, page: n } : { page: n })}`; %>
+  <p class="muted">
+    <% if (page > 1) { %><a href="<%= link(page - 1) %>">← 이전</a><% } %>
+    <% if (page > 1 || hasNext) { %> <%= page %>쪽 <% } %>
+    <% if (hasNext) { %><a href="<%= link(page + 1) %>">다음 →</a><% } %>
+  </p>
 </div>
 <%- include('partials/footer') %>

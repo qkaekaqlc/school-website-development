@@ -58,6 +58,15 @@ const requireAdmin = (req, res, next) =>
   req.me?.is_admin ? next() : res.status(403).send('관리자만 볼 수 있어요.');
 
 const HOT_LIKES = 10; // 인기글 기준 좋아요 수
+const PAGE_SIZE = 20;
+
+// ?page=N → { page, limit, offset }. 다음 페이지가 있는지 알려고 하나 더 가져온다
+const paging = req => {
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  return { page, limit: PAGE_SIZE + 1, offset: (page - 1) * PAGE_SIZE };
+};
+const renderList = (res, scope, rows, q, page) =>
+  res.render('board', { scope, q, page, hasNext: rows.length > PAGE_SIZE, posts: rows.slice(0, PAGE_SIZE) });
 
 const canSee = (me, post) => me.is_admin || post.school_id === null || post.school_id === me.school_id;
 
@@ -209,27 +218,30 @@ app.get('/board/:scope', requireApproved, async (req, res) => {
   const school = req.params.scope === 'school';
   if (school && !req.me.school_id) return res.redirect('/board/all'); // 관리자는 학교가 없음
   const q = String(req.query.q || '').trim().slice(0, 50);
-  const params = [school ? req.me.school_id : null, `%${q.replace(/[\\%_]/g, '\\$&')}%`];
+  const { page, limit, offset } = paging(req);
+  const params = [school ? req.me.school_id : null, `%${q.replace(/[\\%_]/g, '\\$&')}%`, limit, offset];
   const posts = await query(
     `SELECT p.id, p.title, p.created_at,
             (SELECT count(*) FROM comments c WHERE c.post_id = p.id AND NOT c.deleted)::int AS comment_count,
             (SELECT count(*) FROM post_likes l WHERE l.post_id = p.id)::int AS like_count
      FROM posts p WHERE NOT p.deleted AND p.school_id IS NOT DISTINCT FROM $1
        AND (p.title ILIKE $2 OR p.body ILIKE $2)
-     ORDER BY p.id DESC LIMIT 100`, params);
-  res.render('board', { scope: req.params.scope, posts, q });
+     ORDER BY p.id DESC LIMIT $3 OFFSET $4`, params);
+  renderList(res, req.params.scope, posts, q, page);
 });
 
 // 인기글: 내가 볼 수 있는 글 중 좋아요가 HOT_LIKES개 이상
 app.get('/hot', requireApproved, async (req, res) => {
+  const { page, limit, offset } = paging(req);
   const posts = await query(
     `SELECT * FROM (
        SELECT p.id, p.title, p.created_at,
               (SELECT count(*) FROM comments c WHERE c.post_id = p.id AND NOT c.deleted)::int AS comment_count,
               (SELECT count(*) FROM post_likes l WHERE l.post_id = p.id)::int AS like_count
        FROM posts p WHERE NOT p.deleted AND ($1 OR p.school_id IS NULL OR p.school_id = $2)) t
-     WHERE like_count >= $3 ORDER BY id DESC LIMIT 100`, [req.me.is_admin, req.me.school_id, HOT_LIKES]);
-  res.render('board', { scope: 'hot', posts, q: '' });
+     WHERE like_count >= $3 ORDER BY id DESC LIMIT $4 OFFSET $5`,
+    [req.me.is_admin, req.me.school_id, HOT_LIKES, limit, offset]);
+  renderList(res, 'hot', posts, '', page);
 });
 
 app.get('/board/:scope/new', requireApproved, (req, res) =>
