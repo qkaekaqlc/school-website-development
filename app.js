@@ -170,7 +170,7 @@ async function renderMe(req, res, message, status = 200) {
   const comments = await query(
     `SELECT c.body, c.created_at, c.post_id, p.title FROM comments c JOIN posts p ON p.id = c.post_id
      WHERE c.user_id = $1 AND NOT c.deleted AND NOT p.deleted ORDER BY c.id DESC LIMIT 50`, [req.me.id]);
-  res.status(status).render('me', { message, posts, comments });
+  res.status(status).render('me', { message, ok: status < 400, posts, comments });
 }
 
 app.get('/me', requireApproved, (req, res) => renderMe(req, res, null));
@@ -181,6 +181,16 @@ app.post('/me/class', requireApproved, async (req, res) => {
     return renderMe(req, res, '학년(1~3)과 반을 정확히 입력해 주세요.', 400);
   await query('UPDATE users SET grade = $1, class_nm = $2 WHERE id = $3', [grade, classNm, req.me.id]);
   res.redirect('/today');
+});
+
+app.post('/me/password', requireApproved, async (req, res) => {
+  const { current = '', next: newPassword = '' } = req.body;
+  const [user] = await query('SELECT password_hash FROM users WHERE id = $1', [req.me.id]);
+  if (!(await bcrypt.compare(current, user.password_hash)))
+    return renderMe(req, res, '현재 비밀번호가 맞지 않아요.', 400);
+  if (newPassword.length < 8) return renderMe(req, res, '새 비밀번호는 8자 이상이어야 해요.', 400);
+  await query('UPDATE users SET password_hash = $1 WHERE id = $2', [await bcrypt.hash(newPassword, 10), req.me.id]);
+  renderMe(req, res, '비밀번호를 바꿨어요.');
 });
 
 // ── 오늘의 급식과 시간표 ──
